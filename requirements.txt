@@ -7,7 +7,7 @@ annoy>=1.17.0
 rich>=13.4.2
 tqdm>=4.65.0
 numpy>=1.24.3
-torch>=2.0.0
+torch==2.0.1+cpu
 transformers>=4.30.0
 accelerate>=0.20.0
 fastapi
