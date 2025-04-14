@@ -5,9 +5,9 @@ scikit-learn>=1.2.2
 annoy>=1.17.0
 rich>=13.4.2
 tqdm>=4.65.0
-numpy>=1.24.3
-torch==2.0.1
-transformers>=4.30.0
+numpy<2
+torch==2.1.0
+transformers>=4.34.1
 accelerate>=0.20.0
 fastapi
 uvicorn
