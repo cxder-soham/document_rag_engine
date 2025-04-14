@@ -1,5 +1,4 @@
 langchain>=0.0.267
-torch>=2.0.0
 sentence-transformers>=2.2.2
 google-genai
 scikit-learn>=1.2.2
