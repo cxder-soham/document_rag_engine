@@ -18,6 +18,7 @@ from rich.table import Table
 
 from . import config
 from .document_loader import Document, DocumentLoader
+import pickle
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -124,12 +125,15 @@ class SearchEngine:
             self._save_index()
     
     def _save_index(self) -> None:
-        """
-        Save the Annoy index to disk.
-        """
         try:
             self.index.save(self.index_path)
             logger.info(f"Index saved to {self.index_path}")
+
+            # Save mapping dicts
+            meta_path = self.index_path + ".meta.pkl"
+            with open(meta_path, "wb") as f:
+                pickle.dump((self.id_to_index, self.index_to_id), f)
+            logger.info(f"Index metadata saved to {meta_path}")
         except Exception as e:
             logger.error(f"Error saving index: {e}")
     
@@ -155,7 +159,13 @@ class SearchEngine:
             self.index = AnnoyIndex(self.vector_dim, self.metric)
             self.index.load(self.index_path)
             self.document_loader = document_loader
-            logger.info(f"Successfully loaded index from {self.index_path}")
+
+            # Load mapping metadata
+            meta_path = self.index_path + ".meta.pkl"
+            with open(meta_path, "rb") as f:
+                self.id_to_index, self.index_to_id = pickle.load(f)
+
+            logger.info(f"Successfully loaded index and metadata from {self.index_path}")
             return True
         except Exception as e:
             logger.error(f"Error loading index: {e}")

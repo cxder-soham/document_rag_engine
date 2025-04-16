@@ -34,6 +34,7 @@ VECTOR_DIM = int(VECTOR_DIM) if VECTOR_DIM and VECTOR_DIM.isdigit() else None
 N_TREES = int(os.getenv("N_TREES", "100"))
 SEARCH_K = int(os.getenv("SEARCH_K", "-1"))
 ANNOY_INDEX_PATH = os.getenv("ANNOY_INDEX_PATH", "newsgroups_index.ann")
+NUM_SEARCH_RESULTS = int(os.getenv("NUM_SEARCH_RESULTS", "5"))
 
 # Augmented Generation configuration
 GENERATION_MODEL = os.getenv("GENERATION_MODEL", "gemini-2.0-flash")
