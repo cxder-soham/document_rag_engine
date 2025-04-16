@@ -5,11 +5,16 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import torch
 import time
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi import Request
+import os
 
 from src import config
 from src.document_loader import DocumentLoader
 from src.embeddings import get_embedding_generator
-from src.search_engine import create_search_engine
+from src.search_engine import create_search_engine, SearchResult
 try:
     from src.augmented_generation import AugmentedGenerator
     augmented_generation_available = True
@@ -41,7 +46,7 @@ class SearchRequest(BaseModel):
     raw_mode: bool = False
     top_k: Optional[int] = None
 
-class SearchResult(BaseModel):
+class SearchResultResponse(BaseModel):
     title: str
     content: str
     category: str
@@ -49,10 +54,11 @@ class SearchResult(BaseModel):
     document_id: str
 
 class SearchResponse(BaseModel):
-    results: List[SearchResult]
+    results: List[SearchResultResponse]
     query: str
     augmented_response: Optional[str] = None
     processing_time: float
+    raw_mode: Optional[bool] = None
 
 # Global variables to store initialized components
 document_loader = None
@@ -114,15 +120,6 @@ async def initialize_components():
         logger.exception("Error during API initialization")
         raise RuntimeError(f"Failed to initialize search components: {str(e)}")
 
-@app.get("/")
-async def root():
-    """Root endpoint to check API status"""
-    return {
-        "status": "online",
-        "message": "Document Retriever Search API is running",
-        "augmented_generation": augmented_generator is not None
-    }
-
 @app.get("/info")
 async def get_info():
     """Get information about the loaded dataset"""
@@ -153,38 +150,31 @@ async def search(request: SearchRequest):
         top_k = request.top_k if request.top_k is not None else config.TOP_K_RESULTS
         raw_results = search_engine.search(query_embedding, num_results=top_k)
         
-        # Format results
-        results = []
+        # Format results for API response
+        formatted_results = []
         for result in raw_results:
-            # Convert SearchResult objects to API SearchResult models
+            # Convert SearchResult objects to API SearchResultResponse models
             document = result.document
-            results.append(SearchResult(
-                title=document.metadata.get("title", "Untitled"),  # Use metadata dictionary
+            formatted_results.append(SearchResultResponse(
+                title=document.metadata.get("title", "Untitled"),
                 content=document.content[:500] + "..." if len(document.content) > 500 else document.content,
-                category=document.metadata["category_name"],  # Use correct metadata field
+                category=document.metadata["category_name"],
                 score=float(result.score),
-                document_id=str(document.metadata["id"])  # Convert ID to string and use metadata
+                document_id=str(document.metadata["id"])
             ))
         
         # Generate augmented response if enabled and not in raw mode
         augmented_response = None
-        if augmented_generator and not request.raw_mode and results:
+        if augmented_generator and not request.raw_mode and raw_results:
             try:
-                documents_for_context = [
-                    {
-                        "id": str(r.document_id),
-                        "content": r.content,
-                        "category": r.category,
-                        "metadata": {
-                            "category_name": r.category,
-                            "id": r.document_id
-                        }
-                    }
-                    for r in results
-                ]
-                augmented_response = augmented_generator.generate_response(
-                    request.query, documents_for_context
+                # IMPORTANT: Pass the raw_results directly to the augmented generator
+                # because it expects SearchResult objects, not dictionaries
+                augmented_response_data = augmented_generator.generate_response(
+                    query=request.query,
+                    results=raw_results
                 )
+                # Extract the response text from the returned dictionary
+                augmented_response = augmented_response_data.get("response", "")
             except Exception as e:
                 logger.error(f"Error generating augmented response: {str(e)}")
         
@@ -192,16 +182,25 @@ async def search(request: SearchRequest):
         processing_time = time.time() - start_time
         
         return SearchResponse(
-            results=results,
+            results=formatted_results,
             query=request.query,
             augmented_response=augmented_response,
-            processing_time=processing_time
+            processing_time=processing_time,
+            raw_mode=request.raw_mode
         )
         
     except Exception as e:
         logger.exception("Error processing search request")
         raise HTTPException(status_code=500, detail=f"Search processing error: {str(e)}")
-    
+
+templates = Jinja2Templates(directory="templates")
+
+# Add this route to serve the search page
+@app.get("/", response_class=HTMLResponse)
+async def serve_search_page(request: Request):
+    """Serve the search page"""
+    return templates.TemplateResponse("search.html", {"request": request})
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)

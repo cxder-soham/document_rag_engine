@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Document Search</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #333; }
+        .search-container { margin: 20px 0; }
+        #query { padding: 10px; width: 70%; }
+        #search-btn { padding: 10px 20px; background: #4CAF50; color: white; border: none; cursor: pointer; }
+        .options { margin: 10px 0; }
+        .results { margin-top: 20px; }
+        .result-item { margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 5px; }
+        .result-title { font-weight: bold; margin-bottom: 5px; }
+        .result-category { color: #777; font-size: 0.9em; }
+        .result-content { margin-top: 10px; }
+        .augmented-response { margin-top: 30px; padding: 15px; background: #e9f7ef; border-radius: 5px; }
+        .augmented-response h2 { color: #2E7D32; margin-top: 0; }
+        .processing-time { margin-top: 10px; font-size: 0.8em; color: #777; }
+        #loader { display: none; margin: 20px 0; font-style: italic; color: #666; }
+        .error { color: #D32F2F; padding: 10px; background: #FFEBEE; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Document Search</h1>
+    
+    <div class="search-container">
+        <input type="text" id="query" placeholder="Enter your search query">
+        <button id="search-btn" onclick="performSearch()">Search</button>
+    </div>
+    
+    <div class="options">
+        <label>
+            <input type="checkbox" id="raw-mode"> Raw Mode (search only, no augmented response)
+        </label>
+        <label style="margin-left: 20px;">
+            Top K Results: <input type="number" id="top-k" style="width: 50px;" value="5" min="1" max="20">
+        </label>
+    </div>
+    
+    <div id="loader">Searching documents and generating response...</div>
+    
+    <div id="results" class="results"></div>
+    
+    <script>
+        // Add event listener for Enter key on search input
+        document.getElementById('query').addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        });
+        
+        function performSearch() {
+            const query = document.getElementById('query').value.trim();
+            if (!query) {
+                alert('Please enter a search query');
+                return;
+            }
+            
+            const rawMode = document.getElementById('raw-mode').checked;
+            const topK = document.getElementById('top-k').value;
+            
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('results').innerHTML = '';
+            
+            fetch('/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: query,
+                    raw_mode: rawMode,
+                    top_k: parseInt(topK)
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Search request failed: ' + response.statusText);
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('loader').style.display = 'none';
+                displayResults(data);
+            })
+            .catch(error => {
+                document.getElementById('loader').style.display = 'none';
+                document.getElementById('results').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            });
+        }
+        
+        function displayResults(data) {
+            const resultsContainer = document.getElementById('results');
+            let content = '';
+            
+            // Display augmented response if available and not in raw mode
+            if (data.augmented_response && !data.raw_mode) {
+                content += `
+                    <div class="augmented-response">
+                        <h2>Generated Response:</h2>
+                        <div>${data.augmented_response}</div>
+                    </div>
+                `;
+            }
+            
+            // Display search results
+            content += `<h2>Search Results:</h2>`;
+            
+            if (!data.results || data.results.length === 0) {
+                content += `<div>No results found for "${data.query}".</div>`;
+            } else {
+                data.results.forEach((result, index) => {
+                    // Format the score display safely, checking if it exists and has the correct type
+                    let scoreDisplay = '';
+                    if (result.score !== undefined) {
+                        if (typeof result.score === 'number') {
+                            scoreDisplay = `Score: ${result.score.toFixed(4)}`;
+                        } else {
+                            scoreDisplay = `Score: ${result.score}`;
+                        }
+                    }
+                    
+                    content += `
+                        <div class="result-item">
+                            <div class="result-title">${index + 1}. ${result.title || 'Untitled'}</div>
+                            <div class="result-category">Category: ${result.category || 'Unknown'} ${scoreDisplay ? '| ' + scoreDisplay : ''}</div>
+                            <div class="result-content">${result.content || 'No content available'}</div>
+                        </div>
+                    `;
+                });
+            }
+            
+            // Display processing time safely
+            if (data.processing_time !== undefined) {
+                let timeDisplay = typeof data.processing_time === 'number' ? 
+                    data.processing_time.toFixed(3) : data.processing_time;
+                content += `
+                    <div class="processing-time">
+                        Query: "${data.query}" | Processing Time: ${timeDisplay} seconds
+                    </div>
+                `;
+            }
+            
+            resultsContainer.innerHTML = content;
+        }
+    </script>
+</body>
+</html>

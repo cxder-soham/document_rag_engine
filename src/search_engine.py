@@ -172,8 +172,8 @@ class SearchEngine:
             return False
     
     def search(self, 
-              query_embedding: np.ndarray, 
-              num_results: int = None) -> List[SearchResult]:
+          query_embedding: np.ndarray, 
+          num_results: int = None) -> List[SearchResult]:
         """
         Perform a semantic search using a query embedding.
         
@@ -203,13 +203,30 @@ class SearchEngine:
             include_distances=True
         )
         
-        # Convert distances to similarity scores (1 - distance for angular distance)
-        # This makes higher scores better, which is more intuitive
-        if self.metric == 'angular':
-            scores = [1 - distance for distance in distances]
-        else:
-            # For other metrics, just use inverse of distance (higher = better)
-            scores = [1 / (1 + distance) for distance in distances]
+        # Convert distances to similarity scores based on the metric
+        scores = []
+        for distance in distances:
+            if self.metric == 'angular':
+                # Angular distance in Annoy can range from 0 (identical) to 2 (completely opposite)
+                # Normalize to a 0-1 range where higher is better
+                score = 1 - (distance / 2)
+            elif self.metric == 'euclidean' or self.metric == 'manhattan':
+                # For distance metrics, use an exponential decay function
+                # This gives a score between 0 and 1 where closer distances (smaller values)
+                # result in scores closer to 1
+                score = np.exp(-distance)
+            elif self.metric == 'dot':
+                # For dot product, higher values are already better
+                # But we should normalize to 0-1 range
+                # Assuming vectors are normalized, dot product is between -1 and 1
+                score = (distance + 1) / 2
+            else:
+                # Fallback for any other metric
+                score = 1 / (1 + distance)
+            
+            # Ensure score is in valid range
+            score = max(0, min(1, score))
+            scores.append(score)
         
         # Generate search results
         results = []
